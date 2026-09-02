@@ -1,0 +1,1 @@
+ad5a27b0a88decfedd416f577d94aa987a3b64373afd490fd51fbd3ee09b5cc7  dist/Codex-Switch-Lite-0.1.0-universal.dmg

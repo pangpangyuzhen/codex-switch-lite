@@ -1,33 +1,98 @@
 # Codex Switch Lite
 
-一个只为 **Codex Desktop** 做的轻量 Provider 切换工具。
+A tiny macOS switcher for exactly two Codex Desktop modes:
 
-## 用途
+- **ChatGPT Plus** — uses your existing official Codex/ChatGPT OAuth login.
+- **External API** — routes model inference to `https://code.adinsolution.link` using model `gpt-5.5`.
 
-- 一键切换 **ChatGPT Plus / 官方 OpenAI OAuth**
-- 一键切换 **External API**
-- 保留现有 `~/.codex/auth.json`，不覆盖 Plus 登录
-- 切换前自动备份 Codex 配置
-- 不管理 Claude、Gemini、MCP、Skills 等无关功能
+This is deliberately much smaller than CC Switch. It follows CC Switch's modern **config-only third-party switching** model: `auth.json` is never modified; the external API key is injected into the external provider in `config.toml` as `experimental_bearer_token` only while External mode is active.
 
-## 默认 External API
+## What it does not touch
 
-- Base URL: `https://code.adinsolution.link`
-- Model: `gpt-5.5`
-- Wire API: `responses`
+- `~/.codex/auth.json` — never read or written, except checking whether the file exists for status display.
+- Your MCP, projects, features, reasoning, permissions, model catalog path, AGENTS settings, and unrelated provider definitions — preserved.
+- `CODEX_HOME` — no second Codex home.
 
-> API Key 不包含在仓库或安装包配置中，请在应用内自行填写。
+## Files it manages
 
-## 下载
+```text
+~/.codex/config.toml                         # active Codex config
+~/.codex/codex-switch-lite/plus.toml        # Plus mode profile
+~/.codex/codex-switch-lite/external.toml    # External mode profile (key stripped)
+~/.codex/codex-switch-lite/state.json       # current mode
+~/.codex/codex-switch-lite/backups/         # automatic backups
+macOS Keychain: CodexSwitchLite.ExternalAPI # external API key
+```
 
-macOS Universal 版本（Apple Silicon + Intel）：
+If the old Skill profiles exist under `~/.codex/external-api-switcher/`, the Lite app imports them on first run where possible.
 
-`dist/Codex-Switch-Lite-0.1.0-universal.dmg`
+## Build on Mac
 
-首次打开若被 macOS Gatekeeper 拦截，可在 Finder 中右键应用 → **打开**。
+Double-click `build-mac.command`, or in Terminal:
 
-## 说明
+```bash
+cd codex-switch-lite
+./build-mac.command
+```
 
-这是面向个人 Codex Desktop 工作流的轻量版本，思路参考 CC Switch 的 Codex Provider 切换方式，并针对单一 Codex 场景做了裁剪。
+Requirements:
 
-当前构建未做 Apple Developer ID 公证签名。
+- macOS
+- Xcode Command Line Tools
+- Node.js 20+
+- Rust stable
+- pnpm
+
+The script will install `pnpm` with Corepack if needed, install project dependencies, and run the Tauri build.
+
+Built app:
+
+```text
+src-tauri/target/release/bundle/macos/Codex Switch Lite.app
+```
+
+Copy it to `/Applications` if you want.
+
+## How to use
+
+1. Open **Codex Switch Lite**.
+2. On first run, click **初始化配置**. It snapshots/imports your current Plus/API configs without touching OAuth.
+3. Enter your external API key once and click **保存 Key**. The key goes into macOS Keychain.
+4. Click **切到 External API**. The app backs up config, switches provider, and restarts Codex Desktop.
+5. In Codex Desktop, start a **new chat**. That new thread uses the external provider.
+6. Click **切回 ChatGPT Plus** when you want official subscription inference again. Codex restarts; start a new chat.
+
+## Routing used by External mode
+
+```toml
+model_provider = "ExternalAPI"
+model = "gpt-5.5"
+review_model = "gpt-5.5"
+
+[model_providers.ExternalAPI]
+name = "External API"
+base_url = "https://code.adinsolution.link"
+wire_api = "responses"
+experimental_bearer_token = "<key from macOS Keychain>"
+requires_openai_auth = true
+```
+
+`requires_openai_auth = true` deliberately keeps Codex Desktop aware of your official login, while the provider-scoped bearer token is used for the actual external inference request. This mirrors CC Switch's official-login preservation approach.
+
+## Safety behavior
+
+Every switch:
+
+1. Saves the active mode profile.
+2. Syncs common/non-provider settings into the target profile.
+3. Validates TOML.
+4. Creates a timestamped backup.
+5. Atomically replaces `~/.codex/config.toml`.
+6. Restarts Codex Desktop.
+7. Rolls back automatically if the write/validation step fails.
+
+The app keeps at most 20 automatic backups.
+
+## Important
+
+A provider change cannot turn an already-created Codex thread into a different provider. After switching/restarting, **create a new chat**.

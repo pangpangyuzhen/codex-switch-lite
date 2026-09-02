@@ -1,0 +1,25 @@
+[package]
+name = "codex-switch-lite"
+version = "0.1.0"
+description = "Lightweight ChatGPT Plus / External API switcher for Codex Desktop"
+authors = ["Codex Switch Lite contributors"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.85.0"
+
+[build-dependencies]
+tauri-build = { version = "2.4.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.8.2", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"
+toml = "0.8"
+toml_edit = "0.22"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = "symbols"
