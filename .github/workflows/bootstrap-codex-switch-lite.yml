@@ -1,0 +1,91 @@
+name: Bootstrap Codex Switch Lite
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bootstrap-codex-switch-lite.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore source
+        shell: bash
+        run: |
+          mkdir -p /tmp/csl
+          for n in 1 2 3 4; do
+            curl -fsSL "https://raw.githubusercontent.com/pangpangyuzhen/codex-pet/codex-switch-lite-dmg-build/dmg-build/source.part${n}" -o "/tmp/csl/part${n}"
+          done
+          cat /tmp/csl/part1 /tmp/csl/part2 /tmp/csl/part3 /tmp/csl/part4 > /tmp/csl/source.b64
+          base64 -D -i /tmp/csl/source.b64 -o /tmp/csl/source.zip
+          unzip -q /tmp/csl/source.zip -d /tmp/csl/src
+          rsync -a /tmp/csl/src/codex-switch-lite/ ./
+
+      - name: Generate app icon
+        shell: bash
+        run: |
+          mkdir -p src-tauri/icons
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFgAI/9enZVwAAAABJRU5ErkJggg==' | base64 -D > src-tauri/icons/icon.png
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.3
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Pin Tauri JS packages
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+          pkg.dependencies['@tauri-apps/api'] = '2.8.0';
+          pkg.devDependencies['@tauri-apps/cli'] = '2.8.0';
+          fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build universal DMG
+        run: pnpm tauri build --target universal-apple-darwin --bundles dmg
+
+      - name: Stage distributable
+        shell: bash
+        run: |
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)
+          test -n "$DMG"
+          rm -rf dist
+          mkdir -p dist
+          cp "$DMG" dist/Codex-Switch-Lite-0.1.0-universal.dmg
+          shasum -a 256 dist/Codex-Switch-Lite-0.1.0-universal.dmg > dist/SHA256SUMS.txt
+          rm -rf node_modules src-tauri/target
+          rm -f .github/workflows/bootstrap-codex-switch-lite.yml
+
+      - name: Commit source and DMG
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add Codex Switch Lite source and macOS DMG'
+          git push origin HEAD:main
